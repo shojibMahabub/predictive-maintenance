@@ -1,0 +1,155 @@
+{
+  "data_cleaning": {
+    "sensor_bounds": {
+      "volt": [
+        46.4099415682245,
+        294.8047341462945
+      ],
+      "rotate": [
+        28.332832628246138,
+        866.7834664139269
+      ],
+      "pressure": [
+        16.083256073245053,
+        184.76786129252193
+      ],
+      "vibration": [
+        -1.8085910697446224,
+        82.28308486550533
+      ]
+    },
+    "rows_raw": 876100,
+    "duplicates_removed": 0,
+    "missing_hours_added": 0,
+    "outliers_set_to_nan": 1,
+    "missing_values_filled": 1,
+    "rows_clean": 876100
+  },
+  "selected_model": "XGBoost",
+  "models_test": {
+    "Baseline: always normal": {
+      "val_f1": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "pr_auc": 0.018297968397291198,
+      "roc_auc": 0.5,
+      "threshold": 0.5
+    },
+    "Baseline: LogReg on raw sensors": {
+      "val_f1": 0.1288768443239988,
+      "precision": 0.10027406093825568,
+      "recall": 0.15346656797434,
+      "f1": 0.12129485179407176,
+      "pr_auc": 0.06544535284395231,
+      "roc_auc": 0.73964043370391,
+      "threshold": 0.7909542204658133
+    },
+    "XGBoost (sensor features only)": {
+      "val_f1": 0.32251443232841565,
+      "precision": 0.18077989104463346,
+      "recall": 0.9333826794966691,
+      "f1": 0.30289443132231075,
+      "pr_auc": 0.2168752841148501,
+      "roc_auc": 0.9613099035697423,
+      "threshold": 0.2967500686645508
+    },
+    "Random Forest": {
+      "val_f1": 0.8863862206028487,
+      "precision": 0.6961471103327496,
+      "recall": 0.9807549962990377,
+      "f1": 0.8142988835398955,
+      "pr_auc": 0.8607488213386068,
+      "roc_auc": 0.9980445079055374,
+      "threshold": 0.5143433774150342
+    },
+    "XGBoost": {
+      "val_f1": 0.8996515679442508,
+      "precision": 0.812960235640648,
+      "recall": 0.9533678756476683,
+      "f1": 0.8775834658187599,
+      "pr_auc": 0.8791383818254935,
+      "roc_auc": 0.9983960925396455,
+      "threshold": 0.8619435429573059
+    }
+  },
+  "evaluation": {
+    "confusion_matrix": {
+      "tn": 216558,
+      "fp": 889,
+      "fn": 189,
+      "tp": 3864
+    },
+    "false_alarms": {
+      "early warning (24-72h before a failure)": 199,
+      "3-7 days before a failure": 0,
+      "true false alarm (> 7 days / no failure)": 690
+    },
+    "events_total": 171,
+    "events_detected": 169,
+    "event_recall": 0.9883040935672515,
+    "median_lead_time_h": 23.0,
+    "event_recall_by_component": {
+      "comp1": 1.0,
+      "comp1+comp2": 1.0,
+      "comp1+comp3": 1.0,
+      "comp1+comp4": 1.0,
+      "comp2": 1.0,
+      "comp2+comp4": 1.0,
+      "comp3": 0.962,
+      "comp3+comp4": 1.0,
+      "comp4": 0.971
+    }
+  },
+  "anomaly_detection": {
+    "flag_rate": {
+      "< 24h to failure": 0.15173945225758698,
+      "24-72h to failure": 0.08095952023988005,
+      "normal (> 72h)": 0.011100872313708264
+    },
+    "failures_preceded_by_anomaly": 0.5497076023391813
+  },
+  "status_by_condition_pct": {
+    "Critical": {
+      "24-72h": 2.5,
+      "fails < 24h": 95.3,
+      "normal": 0.3
+    },
+    "Normal": {
+      "24-72h": 88.0,
+      "fails < 24h": 0.9,
+      "normal": 98.4
+    },
+    "Warning": {
+      "24-72h": 9.5,
+      "fails < 24h": 3.8,
+      "normal": 1.2
+    }
+  },
+  "failure_signatures_z": {
+    "volt": {
+      "comp1": 4.62,
+      "comp2": 0.01,
+      "comp3": 0.0,
+      "comp4": -0.02
+    },
+    "rotate": {
+      "comp1": -0.03,
+      "comp2": -4.83,
+      "comp3": -0.04,
+      "comp4": -0.07
+    },
+    "pressure": {
+      "comp1": -0.09,
+      "comp2": 0.07,
+      "comp3": 5.64,
+      "comp4": -0.01
+    },
+    "vibration": {
+      "comp1": -0.07,
+      "comp2": -0.01,
+      "comp3": -0.08,
+      "comp4": 5.37
+    }
+  }
+}
