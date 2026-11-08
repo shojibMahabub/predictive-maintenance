@@ -1,241 +1,221 @@
-# ML-Based Predictive Maintenance
+# Predictive maintenance
 
-Predicts whether an industrial machine will **fail within the next 24 hours** from hourly sensor data,
-detects abnormal operating conditions, and runs a **real-time monitoring simulation** that labels every
-machine as **Normal / Warning / Critical**.
+Hourly sensor readings from 100 machines, and a model that estimates whether a machine fails in the next 24 hours. A separate anomaly check flags odd sensor behaviour. A small dashboard replays the data hour by hour and marks each machine Normal, Warning, or Critical.
 
-| | Result on unseen test data (Oct–Dec 2015) |
+The figures below are from the hold-out period, 1 October 2015 through the end of the file. Nothing in that period was used to fit the model or to choose it.
+
+| | |
 |---|---|
-| Model | XGBoost on engineered sensor + component-wear features |
-| Precision / Recall / F1 | **0.81 / 0.95 / 0.88** (baseline logistic regression: 0.10 / 0.15 / 0.12) |
-| Failures caught in advance | **169 of 171 (98.8%)** Critical, median warning **23 h** before failure. The other 2 reached Warning |
-| Normal hours wrongly marked Critical | **0.3%** |
+| Model | XGBoost on sensor features and component age |
+| Precision / recall / F1 | 0.81 / 0.95 / 0.88 |
+| Failures caught ahead of time | 169 of 171, first Critical alert 23 hours before the failure (median) |
+| Normal hours marked Critical | 0.3% |
 
----
+A logistic regression on the four raw sensors, kept as a baseline, scores 0.10 / 0.15 / 0.12 on the same hours.
 
-## Quick start
+## Running it
 
-Requirements: Python 3.10+ and internet on the first run (the dataset downloads automatically, ~80 MB).
+Python 3.10 or newer. The first run needs a network connection so it can download the CSVs (about 80 MB).
 
-**Windows** – double-click `run.bat`. It sets everything up, trains the model on the first run, and opens the
-dashboard at http://localhost:8501.
+On Windows, double-click `run.bat` or use a terminal in this folder:
+
 ```bat
-run.bat            :: web dashboard (default)
+run.bat            :: dashboard at http://localhost:8501
 run.bat train      :: train only
-run.bat simulate   :: real-time demo in the terminal
+run.bat simulate   :: replay real test data in the terminal
 ```
 
-**macOS / Linux**
-```bash
-chmod +x run.sh && ./run.sh       # same options: ./run.sh train | simulate
+`run.bat` creates `.venv`, installs `requirements.txt`, and trains if `models/pdm_model.joblib` is missing. Training takes a few minutes. `run.bat simulate` does not accept extra arguments. For generated machines, or to choose machines and timing, call the script directly:
+
+```bat
+.venv\Scripts\python src\simulate.py --synthetic
+.venv\Scripts\python src\simulate.py --machines 3 17 42 --hours 96 --delay 0.05 --dropout 0.02
 ```
 
-**Manual**
+On macOS or Linux the same three modes are `./run.sh`, `./run.sh train`, and `./run.sh simulate`. The interpreter is `.venv/bin/python`.
+
+By hand:
+
 ```bash
 python -m venv .venv
-.venv\Scripts\activate            # Linux/macOS: source .venv/bin/activate
+.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-python src/train.py               # ~2-3 min: preprocessing, plots, models, evaluation
-streamlit run src/dashboard.py    # web dashboard
-python src/simulate.py            # real-time demo in the terminal (replays unseen real data)
-python src/simulate.py --synthetic           # same, with brand-new generated machines
-python src/simulate.py --machines 3 17 42 --hours 72 --delay 0.2 --dropout 0.05
+python src/train.py             # model, metrics, and plots
+streamlit run src/dashboard.py
+python src/simulate.py
 ```
+
+`train.py` writes `models/pdm_model.joblib`, `outputs/metrics.json`, and the plots in `outputs/figures/`.
+
+The What-if tab stays hidden until `SHOW_WHAT_IF` is set in the same terminal, before the dashboard starts. `1`, `true`, and `yes` all turn it on.
+
+```powershell
+$env:SHOW_WHAT_IF = "true"; .\run.bat
+```
+
+```bat
+set SHOW_WHAT_IF=true && run.bat
+```
+
+```bash
+SHOW_WHAT_IF=true ./run.sh
+```
+
+To move the project, copy the folder and leave `.venv` behind. The run script builds a new one.
 
 ## Dashboard
 
-A simple web UI (`src/dashboard.py`, Streamlit) with three tabs:
+`src/dashboard.py` (Streamlit). Three tabs, and a fourth when `SHOW_WHAT_IF` is set. The sidebar can retrain the full pipeline.
 
-| Tab | What you can do |
+**Overview.** Test metrics, the five-model comparison, and the saved plots.
+
+**Live monitor.** Replay unseen real hours, or generate five new machines: four that slowly degrade (one failure type each) and one healthy control. Status cards, a probability chart, and an event log update every simulated hour. Default stream length is 96 hours, with a 2% chance that any single sensor value is dropped. When a card is Warning or Critical, **Swap machine** installs a new unit, restarts its sensor buffer, and a later failure on that machine is logged as avoided. At the end of a run the log can be downloaded. The same rows are written to `outputs/realtime_predictions.csv` and `outputs/realtime_anomalies.csv`.
+
+**Machine explorer.** One machine and a date range. Sensors, the 24-hour failure probability, the anomaly score, and the real failure times, including how many hours before each failure the model first went Critical.
+
+**What-if predictor.** Sliders for the recent sensor levels and for how many days ago each component was replaced. With the other sensors at their usual levels, vibration 50 and comp4 last replaced 60 days ago is Critical (probability about 98.8%). The same vibration with comp4 replaced 10 days ago stays Normal.
+
+![Overview](docs/dashboard_overview.png)
+![Live monitor](docs/dashboard_live.png)
+![Synthetic machines](docs/dashboard_synthetic.png)
+![Machine explorer](docs/dashboard_explorer.png)
+![What-if predictor](docs/dashboard_whatif.png)
+
+## Data
+
+The files are the public Microsoft Azure predictive maintenance set (the same one usually listed on Kaggle). `src/data.py` downloads them from the [Microsoft SQL workshops repo](https://github.com/microsoft/sqlworkshops) and, if that copy fails, from a second GitHub mirror. They are saved under `data/`.
+
+* `PdM_telemetry.csv`, 876,100 rows. 100 machines, one row an hour, from 1 Jan 2015 06:00 to 1 Jan 2016 06:00. Sensors: `volt`, `rotate`, `pressure`, `vibration`.
+* `PdM_failures.csv`, 761 failures: comp2 259, comp1 192, comp4 179, comp3 131.
+* `PdM_maint.csv`, 3,286 component replacements, planned and after a failure.
+
+The original bundle also has an error log and a machine list (model and age). This project does not download them.
+
+## Cleaning and the split
+
+Duplicates are removed: exact copies, and a second row for the same machine and timestamp. Each machine is placed on a complete hourly grid. Missing hours and impossible readings are filled by interpolation along that machine. A reading is treated as a glitch when it falls outside the median ± 6 IQR. The limits are wide so a real drift is kept.
+
+On this dump that pass removed 0 duplicate rows, filled 0 missing hours, and replaced 1 glitch. The cleaning is still used, because the live simulator deliberately drops sensor values.
+
+During training the whole series is already available, so gaps are interpolated. In the live loop the next hour has not arrived, so a missing or out-of-range value is replaced with the last good reading for that sensor.
+
+Each model pipeline has its own `StandardScaler`, fit on the training months only.
+
+The split is by time:
+
+* Train: before 1 September 2015
+* Validation: September, for the alarm threshold and for choosing the model
+* Test: from 1 October 2015 to the end of the file
+
+The September cutoff is the threshold with the best F1. For the saved XGBoost model that cutoff is 0.86. Warning starts at half of it, 0.43, or when the anomaly model fires.
+
+## Features
+
+`src/features.py` is used both in training and in the live monitor, so both paths see the same columns.
+
+Twenty of the 24 features come from the sensors. For each sensor: the raw value, a 3-hour mean, a 24-hour mean, a 24-hour standard deviation, and a trend (3-hour mean minus 24-hour mean).
+
+The other four are hours since comp1, comp2, comp3, and comp4 were last replaced. Only maintenance recorded strictly before the current hour is used. A replacement logged at the failure itself would otherwise make that part look new at the moment it broke.
+
+The day before a failure, the sensors move in a regular way:
+
+| Failed part | What moves |
 |---|---|
-| **Overview** | headline metrics, model comparison table, browse all analysis charts |
-| **Live monitor** | stream replayed real data or **generated synthetic machines**, and watch the status cards, failure-probability chart and event log update every simulated hour. When a machine is Warning or Critical, click **Swap machine** to replace it with a new unit and restart its sensor; its upcoming failure is then logged as *avoided*. Download the log at the end |
-| **Machine explorer** | pick any machine and period, then see its sensors, predicted risk, anomaly score and real failures, plus how early each failure was predicted |
+| comp1 | voltage up, about +4.6 standard deviations |
+| comp2 | rotation down, about −4.8 |
+| comp3 | pressure up, about +5.6 |
+| comp4 | vibration up, about +5.4 |
 
-The sidebar has a **Retrain model** button that reruns the full pipeline.
+![Failure signatures](outputs/figures/02_failure_signatures.png)
 
-![dashboard overview](docs/dashboard_overview.png)
-![dashboard live monitor](docs/dashboard_live.png)
+![Sensor trends](outputs/figures/01_sensor_trends_machine.png)
+![Normal vs the day before failure](outputs/figures/03_normal_vs_abnormal.png)
 
-### Optional: What-if predictor (hidden by default)
-An extra tab, beyond the assessment brief, where sliders for sensor levels and component age give a live prediction.
-Enable it with the `SHOW_WHAT_IF` environment variable:
-```powershell
-$env:SHOW_WHAT_IF = "true"; .\run.bat      # PowerShell
-set SHOW_WHAT_IF=true && run.bat           # Command Prompt
-SHOW_WHAT_IF=true ./run.sh                 # macOS / Linux
-```
+## Models
 
-In the What-if tab, try raising vibration to 50. The machine goes **Critical** (98.8%) while comp4 is 60 days old, but stays
-**Normal** if comp4 was replaced 10 days ago. The model has learned to combine sensor drift with component wear.
+`src/train.py` fits five classifiers. The label is `failure_soon`: 1 when the machine's next failure is strictly less than 24 hours away, including the hour of the failure. A bit under 2% of hours are positive.
 
-![dashboard what-if](docs/dashboard_whatif.png)
+Logistic regression uses `class_weight="balanced"`. The random forest uses `class_weight="balanced_subsample"`. XGBoost sets `scale_pos_weight` to the number of normal hours divided by the number of failure hours. The always-normal baseline shows the score of a model that never alarms. Its threshold stays at 0.5. Every other threshold is chosen on September.
 
-To move the project, copy the folder **without `.venv`** – the run script recreates it.
-
-## Project structure
-
-```
-src/data.py        download, cleaning (duplicates, missing hours, glitches), 24h failure labels
-src/features.py    feature engineering - shared by training AND real-time (no train/serve skew)
-src/train.py       full pipeline: preprocessing -> analysis -> models -> anomaly detection -> evaluation
-src/simulate.py    real-time streaming simulation with Normal / Warning / Critical status
-src/generator.py   synthetic sensor data generator (healthy + degrading machines)
-src/dashboard.py   web dashboard (Streamlit)
-models/            trained model (pdm_model.joblib: classifier, thresholds, anomaly detector)
-outputs/figures/   all visualisations
-outputs/metrics.json              all metrics
-outputs/realtime_predictions.csv  log of every live prediction
-outputs/realtime_anomalies.csv    log of detected anomalies
-```
-
-## Dataset
-
-[Microsoft Azure Predictive Maintenance](https://www.kaggle.com/datasets/arnabbiswas1/microsoft-azure-predictive-maintenance)
-(public, downloaded from Microsoft's GitHub): 100 machines, hourly readings for all of 2015.
-
-* **Telemetry** (876,100 rows): voltage, rotation (RPM), pressure, vibration
-* **Failures** (761): component failures (comp1–comp4)
-* **Maintenance** (3,286): every component replacement, planned or after a failure
-
----
-
-## How each task is solved
-
-### 1. Data preprocessing
-* Duplicate records removed (exact and same machine + timestamp).
-* Every machine is re-indexed onto a complete hourly grid, so missing hours become explicit gaps, then **interpolated per machine**.
-* **Noisy values / sensor glitches**: readings outside median ± 6·IQR are treated as missing. The bound is wide on purpose so that real degradation is kept.
-* Rolling means also smooth the hourly noise.
-* **Scaling**: `StandardScaler` inside each sklearn pipeline, fitted on training data only.
-* **Train / validation / test split by time**: Jan–Aug train, Sep validation (threshold tuning and model selection), Oct–Dec test. A random split would leak the future into training.
-* The dataset is clean (0 duplicates, 0 gaps, 1 glitch). The cleaning code is still needed for real plants, and the real-time simulator injects missing values to exercise it.
-
-### 2. Analysis & feature engineering
-24 features per machine-hour:
-* per sensor: raw value, **3h moving average**, **24h moving average**, **24h standard deviation**, **trend** (3h mean − 24h mean)
-* component wear: **hours since each component was last replaced**, using only maintenance logged *before* the current hour (prevents leakage)
-
-The key finding is that each failure type has a clear sensor signature in the 24 h before it fails:
-
-![failure signatures](outputs/figures/02_failure_signatures.png)
-
-| failed component | sensor that drifts |
-|---|---|
-| comp1 | voltage ↑ (+4.6σ) |
-| comp2 | rotation ↓ (−4.8σ) |
-| comp3 | pressure ↑ (+5.6σ) |
-| comp4 | vibration ↑ (+5.4σ) |
-
-![sensor trends](outputs/figures/01_sensor_trends_machine.png)
-![normal vs abnormal](outputs/figures/03_normal_vs_abnormal.png)
-
-### 3. Model development
-Target: `failure within next 24h` (1.9% positive, so heavily imbalanced). Imbalance is handled with class weights and
-`scale_pos_weight`, and the decision threshold is tuned on the validation month, not left at the default 0.5.
-
-| Model (test set) | Precision | Recall | F1 | PR-AUC |
+| Model, scored on the test period | Precision | Recall | F1 | PR-AUC |
 |---|---|---|---|---|
-| Baseline: always "normal" | 0.00 | 0.00 | 0.00 | 0.02 |
-| Baseline: logistic regression, raw sensors | 0.10 | 0.15 | 0.12 | 0.07 |
-| XGBoost, sensor features only | 0.18 | 0.93 | 0.30 | 0.22 |
-| Random Forest, all features | 0.70 | 0.98 | 0.81 | 0.86 |
-| **XGBoost, all features (selected)** | **0.81** | **0.95** | **0.88** | **0.88** |
+| Always normal | 0.000 | 0.000 | 0.000 | 0.018 |
+| Logistic regression, raw sensors | 0.100 | 0.153 | 0.121 | 0.065 |
+| XGBoost, sensor features only | 0.181 | 0.933 | 0.303 | 0.217 |
+| Random Forest, all 24 features | 0.696 | 0.981 | 0.814 | 0.861 |
+| XGBoost, all 24 features (saved) | 0.813 | 0.953 | 0.878 | 0.879 |
 
-![model comparison](outputs/figures/04_model_comparison.png)
+The saved model is whichever of the two full-feature models had the higher September F1. That was XGBoost (0.900 vs 0.886). The test months are only a final score.
 
-What the comparison shows:
-* Rolling-window features take sensors from almost useless (F1 0.12) to catching 93% of failure hours.
-* With sensors alone, precision stays at about 0.2. The sensors drift sometimes without a failure following
-  (see March in the trend plot). **Component wear** tells the model whether a drift happens on a part that is due to fail,
-  and adding it raises precision from 0.18 to 0.81.
+Rolling sensor features are enough to catch most failure hours. They also alarm on a lot of hours that never fail, which is why precision stays near 0.18 until component age is added. A high vibration reading on a worn comp4 is a different situation from the same reading a few days after that part was replaced.
 
-### 4. Anomaly detection
-An **Isolation Forest** is trained only on normal behaviour (> 72 h from any failure), using the sensor features and no labels.
-The alarm threshold is the 99th percentile of normal validation scores, which gives about a 1% false-alarm budget.
+![Model comparison](outputs/figures/04_model_comparison.png)
+![Precision-recall curves](outputs/figures/05_precision_recall_curves.png)
 
-| Test hours | Flagged as anomalous |
-|---|---|
-| normal operation | 1.1% |
-| 24–72 h before failure | 8.1% |
-| < 24 h before failure | 15.2% |
+## Anomaly detection
 
-55% of failures have an anomaly in the 24 h before them. It is weaker than the supervised model but needs **no failure history**,
-so it works on new machines or failure types never seen before. In the live demo it often fires *earlier* than the classifier.
+An Isolation Forest is fit on training hours that are more than 72 hours from any failure. It sees the sensor features and no labels. Its threshold is the 99th percentile of normal September scores, which leaves about a 1% flag rate on quiet data.
 
-![anomaly detection](outputs/figures/06_anomaly_detection.png)
+On the test period it flags 1.1% of normal hours, 8.1% of hours that are 24–72 hours before a failure, and 15.2% of hours in the last day. About 55% of failures have at least one anomaly flag in the preceding 24 hours. That is well behind the XGBoost classifier. It also does not need a catalogue of past failures, so a new failure pattern can still raise Warning.
 
-### 5. Evaluation
-![confusion matrix](outputs/figures/07_confusion_matrix.png)
+![Anomaly scores](outputs/figures/06_anomaly_detection.png)
 
-* **Hourly**: TP 3,864 · FP 889 · FN 189 · TN 216,558
-* **Per failure event** (what maintenance teams care about): 169/171 detected in advance, median lead time 23 h.
+## Test-set mistakes
 
-**False alarms (889 hours)**: 22% happen 24–72 h before a real failure, so they are early warnings rather than true mistakes.
-The remaining 78% are more than 7 days from any failure, so they are real false alarms. Overall, only 0.3% of normal hours are marked Critical.
+Hourly counts for the saved model: 3,864 true positives, 889 false positives, 189 false negatives, 216,558 true negatives.
 
-**Missed failures**: 2 of 171 events (one comp3, one comp4). Their probability peaked at 0.75 and 0.80, just under the
-Critical threshold (0.86). Both still reached **Warning** and were also flagged by the anomaly detector, so with the
-3-level status **no failure went completely unflagged**.
+![Confusion matrix, baseline and XGBoost](outputs/figures/07_confusion_matrix.png)
 
-**How to improve**
-1. Add the error-log and machine metadata (model, age) as features. Non-fatal errors often come before failures.
-2. Predict *which* component will fail (multi-class), so the right spare part is ready before the technician arrives.
-3. Require an alarm to persist for N hours, and set the threshold from the cost of a missed failure vs a false alarm, not from F1.
-4. Train an LSTM or 1D-CNN directly on raw sequences to learn longer degradation patterns. Check gains against XGBoost, since an
-   LSTM costs more to train and explain.
-5. Retrain regularly and monitor data drift. Calibrate probabilities so "p = 0.9" really means 90%.
-6. Use walk-forward cross-validation over several months instead of a single validation month.
+Of those 889 false-positive hours, 199 fall 24–72 hours before a real failure, so the alarm is early and the failure does arrive. None sit in the 3-to-7-day range. The other 690 are more than seven days from any failure.
 
-### 6. Real-time prediction simulation
-`src/simulate.py` streams sensor data hour by hour as if it came live from the machines. It has two data sources:
+By failure event, which is the count maintenance would actually use: 169 of 171 events were Critical at least once in the previous 24 hours. The median lead is 23 hours. The two misses are one comp3 and one comp4. Both still reached Warning. Per-component rates are in `outputs/metrics.json`: comp3 0.962, comp4 0.971, and 1.0 for the other components and for combined failures.
 
-* **Replay (default)**: real test-period data the model never saw. Because the actual failure times are known,
-  every prediction can be checked against what really happened.
-* **Synthetic (`--synthetic`)**: `src/generator.py` creates brand-new machines in Python. Healthy machines produce
-  normal noisy readings. Degrading machines (one per failure type) shift the matching sensor about 48 h before
-  they fail and then break. All parameters are measured from the real data: shift sizes (voltage +20, RPM −80,
-  pressure +25, vibration +10), noise levels, component ages, and the 15-day maintenance cycle.
+Worth doing next:
 
-Both sources go through the same pipeline:
+* Add the error log and the machine metadata from the original dataset. Small errors often show up before a hard failure.
+* Predict which component fails, so the spare part can be ready.
+* Require the alarm to stay on for several hours, and pick the threshold from the cost of a missed failure against the cost of a false one.
+* Try an LSTM or a 1D-CNN on the raw sequence, and keep it only if it beats this XGBoost. Those libraries are left out of `requirements.txt` until then.
+* Retrain on new months, and check that a probability of 0.9 really happens about 90% of the time.
+* Use more than one validation month. This run uses September only.
 
-* the feed randomly drops 2% of sensor values to imitate faulty sensors;
-* one `MachineMonitor` per machine: it validates each reading (missing or impossible value → last good value),
-  keeps a rolling 24 h buffer, computes features with the **same code as training**, and runs the classifier and anomaly detector;
-* status rule: **Critical** if P(failure in 24h) ≥ tuned threshold; **Warning** if P ≥ half that threshold *or* an anomaly is detected; otherwise **Normal**;
-* actual failures are printed when they happen so predictions can be checked live; every prediction and anomaly is logged to CSV.
+![Top features](outputs/figures/08_feature_importance.png)
 
-Example output (auto-selected window: 3 machines that fail, plus 1 healthy control machine):
+## Live simulation
+
+`src/simulate.py` steps one hour at a time.
+
+The default source is real telemetry from the test period. With no machine list it picks a window that contains three machines which actually fail, plus one healthy machine. Defaults are 96 hours, 0.05 seconds between ticks, a 2% sensor dropout, and seed 7. `--start` can pin the window, for example `2015-11-01`.
+
+`--synthetic` uses `src/generator.py`. The new machines are numbered from 101. Four are scheduled to fail, one component type each, and one stays healthy. Drift starts 48 hours before the failure and takes 6 hours to reach full size: voltage +20, rotation −80, pressure +25, vibration +10. Those shifts, the noise level, and the ages are measured from the real data. Failed parts are set 45–120 days old. Other services sit on a 15-day cycle.
+
+That 15-day gap matters. In the real failures, almost none happen within 15 days of a maintenance visit (about 0.5%). The model treats "recently serviced" as safe. A first version of the generator that broke freshly serviced machines produced almost no alerts. For this fleet that follows the data. Before using the same rule on another plant, it should be checked with the people who schedule the work.
+
+Each hour, one `MachineMonitor` per machine validates the reading, keeps a 24-hour buffer, builds features, and runs both models. Status is Critical at probability ≥ 0.86, Warning at probability ≥ 0.43 or an anomaly, and Normal otherwise. Real failures are printed when their timestamp arrives. Every row is logged.
+
+Swap exists on `MachineMonitor`, and the dashboard calls it. The terminal loop does not.
+
+One line of terminal output looks like this:
+
 ```
-[2015-11-26 03:00]  M1   Normal   p=0.00   | M16  Normal   p=0.00   | M17  Normal   p=0.00   | M24  Normal   p=0.00
-[2015-11-26 04:00]  M1   Normal   p=0.00   | M16  Normal   p=0.00   | M17  Warning  p=0.65   | M24  Normal   p=0.00
-[2015-11-26 09:00]  M1   Normal   p=0.00   | M16  Normal   p=0.00   | M17  Critical p=0.96   | M24  Normal   p=0.00
-[2015-11-26 21:00]  M1   Normal   p=0.00   | M16  Warning  p=0.00 A | M17  Critical p=0.99   | M24  Normal   p=0.00
-[2015-11-27 06:00]  M1   Normal   p=0.00   | M16  Warning  p=0.01 A | M17  Critical p=0.98   | M24  Normal   p=0.00
+[2015-11-26 09:00]  M1   Normal   p=0.00   | M17  Critical p=0.96   | M24  Normal   p=0.00
     >>> ACTUAL FAILURE: machine 17, comp2 replaced
-[2015-11-27 07:00]  M1   Normal   p=0.00   | M16  Critical p=1.00   | M17  Normal   p=0.00   | M24  Warning  p=0.79
-...
-Machine 16 failed at 2015-11-28 06:00:00 (comp2): first Critical alert 23h before
-Machine 17 failed at 2015-11-27 06:00:00 (comp2): first Critical alert 21h before
-Machine 24 failed at 2015-11-28 06:00:00 (comp3): first Critical alert 22h before
 ```
-(`A` = anomaly detected. Machine 16 was flagged by the anomaly detector 33 h before failure.)
 
-**Synthetic mode results**: across 7 test runs with different random seeds, all 23 generated failures got a Critical alert 19–28 h in advance,
-and the healthy machines were never marked Critical.
+`A` after the probability means the anomaly model fired on that hour. The summary at the end lists hours in each status and the lead time of the first Critical alert.
 
-![synthetic machines in the dashboard](docs/dashboard_synthetic.png)
+## Files
 
-Building the generator also exposed something the model relies on. In this dataset a failure almost never happens
-within 15 days of a maintenance visit (0.5% of real failures), so the model learned that "recently serviced"
-means "safe". When the generator first produced recently serviced machines, alerts were suppressed. That is
-a reasonable rule for this fleet, but it should be checked with maintenance engineers before deploying on a real plant.
-
----
-
-## Design decisions
-* **No data leakage**: time-based split; the maintenance record created *because of* a failure is excluded from that hour's features; the threshold is tuned on validation, not on test.
-* **Event-level metrics** as well as hourly ones: "did we warn before the failure, and how early?" is the question the business asks.
-* **Supervised + unsupervised**: the classifier is precise for known failure modes; the anomaly detector covers unknown ones.
-* **Simple and portable**: plain Python scripts, 7 dependencies, one command to run, and no GPU or deep-learning framework needed.
-  TensorFlow/PyTorch were left out on purpose: gradient boosting already reaches F1 0.88 here, and an LSTM is listed as a next step.
+```
+run.bat, run.sh           setup, then dashboard, train, or simulate
+src/data.py               download, cleaning, 24-hour labels
+src/features.py           the 24 features, shared by training and the live path
+src/train.py              clean, compare five models, fit the anomaly model, save metrics
+src/simulate.py           hour-by-hour replay or synthetic run
+src/generator.py          healthy and degrading machines
+src/dashboard.py          Streamlit UI
+models/pdm_model.joblib   classifier, thresholds, anomaly model, sensor bounds
+outputs/metrics.json      the numbers quoted above
+outputs/figures/          plots from training
+outputs/realtime_*.csv    logs from the latest live run
+```
