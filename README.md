@@ -47,25 +47,13 @@ python src/simulate.py
 
 `train.py` writes `models/pdm_model.joblib`, `outputs/metrics.json`, and the plots in `outputs/figures/`.
 
-The What-if tab stays hidden until `SHOW_WHAT_IF` is set in the same terminal, before the dashboard starts. `1`, `true`, and `yes` all turn it on.
-
-```powershell
-$env:SHOW_WHAT_IF = "true"; .\run.bat
-```
-
-```bat
-set SHOW_WHAT_IF=true && run.bat
-```
-
-```bash
-SHOW_WHAT_IF=true ./run.sh
-```
+The What-if tab reads `SHOW_WHAT_IF` from `.env` in the project folder. `1`, `true`, and `yes` show the tab. Anything else hides it. The shell environment is ignored. Change the file, then start the dashboard again.
 
 To move the project, copy the folder and leave `.venv` behind. The run script builds a new one.
 
 ## Dashboard
 
-`src/dashboard.py` (Streamlit). Three tabs, and a fourth when `SHOW_WHAT_IF` is set. The sidebar can retrain the full pipeline.
+`src/dashboard.py` (Streamlit). Three tabs, and a fourth when `.env` sets `SHOW_WHAT_IF` to true. The sidebar can retrain the full pipeline.
 
 **Overview.** Test metrics, the five-model comparison, and the saved plots.
 
@@ -207,6 +195,7 @@ One line of terminal output looks like this:
 ## Files
 
 ```
+.env                      SHOW_WHAT_IF for the What-if tab
 run.bat, run.sh           setup, then dashboard, train, or simulate
 src/data.py               download, cleaning, 24-hour labels
 src/features.py           the 24 features, shared by training and the live path

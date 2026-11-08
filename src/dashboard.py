@@ -3,7 +3,6 @@
 Run:  streamlit run src/dashboard.py      (or: run.bat dashboard)
 """
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from dotenv import dotenv_values
 
 from data import COMPONENTS, FIG_DIR, MODEL_DIR, OUTPUT_DIR, ROOT, SENSORS, load_raw
 from features import LONG, build_features
@@ -23,8 +23,9 @@ from simulate import build_monitors, choose_window, classify, sensor_stream
 
 st.set_page_config(page_title="Predictive Maintenance", layout="wide")
 MODEL_PATH = MODEL_DIR / "pdm_model.joblib"
-# Extra tab beyond the assessment brief; enable with SHOW_WHAT_IF=true.
-SHOW_WHAT_IF = os.environ.get("SHOW_WHAT_IF", "false").strip().lower() in ("1", "true", "yes")
+# Extra tab beyond the assessment brief. Set SHOW_WHAT_IF in the project .env file.
+_env = dotenv_values(ROOT / ".env")
+SHOW_WHAT_IF = str(_env.get("SHOW_WHAT_IF", "false")).strip().lower() in ("1", "true", "yes")
 COLORS = {"Normal": "#2e7d32", "Warning": "#ef8f00", "Critical": "#c62828"}
 
 
